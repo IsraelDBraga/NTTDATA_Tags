@@ -1,88 +1,136 @@
 interface Veiculo {
    nome: string;
    placa: string;
-   entrada: Date | string;
+   entrada: Date;
 }
 
-(function () {
-    const $ = (query: string): HTMLInputElement | null => 
-    document.querySelector(query);
+interface Encerrar {
+    nome: string;
+    placa: string;
+    tempo: number;
+  }
 
-    function calcTempo(mil: number) {
-        const min = Math.floor(mil / 60000);
-        const sec = Math.floor((mil % 60000) / 1000);
+  class EstacionamentoFront {
+    constructor(
+      private $: (q: string) => HTMLInputElement,
+      private estacionamento = new Estacionamento()
+    ) {}
 
+    adicionar(carro: Veiculo, salvar = false) {
+        this.estacionamento.adicionar(carro);
+        const row = document.createElement("tr");
+        row.innerHTML = `
+                    <td>${carro.nome}</td>
+                    <td>${carro.placa}</td>
+                    <td data-time="${carro.entrada}">
+                        ${carro.entrada.toLocaleString("pt-BR", {
+                          hour: "numeric",
+                          minute: "numeric",
+                        })}
+                    </td>
+                    <td>
+                        <button class="delete">x</button>
+                    </td>
+                `;
+    
+        if (salvar) {
+          this.estacionamento.salvar();
+        }
+    
+        this.$("#patio").appendChild(row);
+      }
+    
+      encerrar(cells: HTMLCollection) {
+        if (cells[2] instanceof HTMLElement) {
+          const veiculo = {
+            nome: cells[0].textContent || "",
+            placa: cells[1].textContent || "",
+            tempo:
+              new Date().valueOf() -
+              new Date(cells[2].dataset.time as string).valueOf(),
+          };
+    
+          this.estacionamento.encerrar(veiculo);
+        }
+      }
+    
+      render() {
+        this.$("#patio").innerHTML = "";
+        this.estacionamento.patio.forEach((c) => this.adicionar(c));
+      }
+    }
+    
+    class Estacionamento {
+      public patio: Veiculo[];
+      constructor() {
+        this.patio = localStorage.patio ? JSON.parse(localStorage.patio) : [];
+      }
+    
+      adicionar(carro: Veiculo) {
+        this.patio.push(carro);
+      }
+    
+      encerrar(info: Encerrar) {
+        const tempo = this.calcTempo(info.tempo);
+    
+        const msg = `
+          O veículo ${info.nome} de placa ${info.placa} permaneceu ${tempo} estacionado.
+          \n\n Deseja encerrar?
+        `;
+    
+        if (!confirm(msg)) return;
+    
+        this.patio = this.patio.filter((carro) => carro.placa !== info.placa);
+    
+        this.salvar();
+      }
+    
+      private calcTempo(mil: number) {
+        var min = Math.floor(mil / 60000);
+        var sec = Math.floor((mil % 60000) / 1000);
         return `${min}m e ${sec}s`;
+      }
+    
+      salvar() {
+        console.log("Salvando...");
+        localStorage.patio = JSON.stringify(this.patio);
+      }
     }
-
-    function patio() {
-        function ler(): Veiculo[] {
-            return localStorage.patio ? JSON.parse(localStorage.patio) : [];
+    
+    (function () {
+      const $ = (q: string) => {
+        const elem = document.querySelector<HTMLInputElement>(q);
+    
+        if (!elem) throw new Error("Ocorreu um erro ao buscar o elemento.");
+    
+        return elem;
+      };
+    
+      const estacionamento = new EstacionamentoFront($);
+      estacionamento.render();
+    
+      $("#cadastrar").addEventListener("click", () => {
+        const nome = $("#nome").value;
+        const placa = $("#placa").value;
+    
+        if (!nome || !placa) {
+          alert("Os campos são obrigatórios.");
+          return;
         }
-        
-        function salvar (veiculos: Veiculo[]) {
-            localStorage.setItem("patio", JSON.stringify(veiculos));
+    
+        const carro: Veiculo = { nome, placa, entrada: new Date() };
+    
+        estacionamento.adicionar(carro, true);
+    
+        $("#nome").value = "";
+        $("#placa").value = "";
+      });
+    
+      $("#patio").addEventListener("click", ({ target }: MouseEvent | any) => {
+        if (target.className === "delete") {
+          estacionamento.encerrar(target.parentElement.parentElement.cells);
+          estacionamento.render();
         }
-
-        function adicionar (veiculo: Veiculo, salva?: boolean) {
-            const row = document.createElement("tr");
-
-            row.innerHTML = `
-                <td>${veiculo.nome}</td>
-                <td>${veiculo.placa}</td>
-                <td>${veiculo.entrada}</td>
-                <td>
-                    <button class="delete" data-placa="${veiculo.placa}">x</button>
-                </td>           
-            `;
-
-            row.querySelector(".delete")?.addEventListener("click", function(){
-                remover(this.dataset.placa);
-            });
-
-            $("#patio")?.appendChild(row);
-
-            if(salva) salvar([...ler(), veiculo]);
-        }
-
-        function remover(placa: string) {
-
-            const {entrada, nome} = ler().find(veiculo => veiculo.placa === placa);
-
-            const tempo = calcTempo(new Date().getTime() - new Date(entrada).getTime());
-
-            if(confirm(`O veiculo ${nome} permaneceu por ${tempo}. Deseja encerrar?`)) return;
-
-            salvar(ler().filter(veiculo => veiculo.placa !== placa));
-            render();
-        }
-
-
-        function render (){
-            $("#patio")!.innerHTML = "";
-            const patio = ler();
-
-            if (patio.length) {
-                patio.forEach((veiculo) => adicionar(veiculo));
-                    
-            }
-
-        }
-
-        return { ler, adicionar, remover, salvar, render };
-        
-    }
-
-    patio().render();
-    $("#cadastar")?.addEventListener("click", () => {
-        const nome = $('#nome')?.value;
-        const placa = $('#placa')?.value;
-
-        if(nome || placa) {
-            alert("Os campos nome e placa são obrigatórios!");
-            return;
-        }
-
-        patio().adicionar({ nome ,placa, entrada: new Date().toISOString() }, true); 
-    });
-})();
+      });
+    })();
+    
